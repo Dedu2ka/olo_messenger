@@ -19,7 +19,8 @@ class MessageDeliveryService(
     private val chatRepository: ChatRepository,
     private val messageRepository: MessageRepository,
     private val webSocketSessionManager: WebSocketSessionManager,
-    private val pushNotificationService: PushNotificationService
+    private val pushNotificationService: PushNotificationService,
+    private val webPushNotificationService: WebPushNotificationService
 ) {
     private val objectMapper = jacksonObjectMapper()
 
@@ -62,6 +63,7 @@ class MessageDeliveryService(
                 deliveredToAnyRecipient = true
             }
             pushNotificationService.notifyUser(recipientId, message.chatId, senderId, message.content)
+            webPushNotificationService.notifyUser(recipientId, message.chatId, senderId, message.content)
         }
 
         if (deliveredToAnyRecipient) {

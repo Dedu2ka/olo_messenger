@@ -31,6 +31,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-flyway")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("com.google.firebase:firebase-admin:9.11.0")
+    implementation("nl.martijndwars:web-push:5.1.2")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.86")
 
     // Redis (реактивный клиент — для blacklist токенов и кэша профилей)
     implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
@@ -57,4 +59,12 @@ kotlin {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+}
+
+tasks.register<JavaExec>("generateWebPushKeys") {
+    group = "application"
+    description = "Generates a VAPID key pair for Web Push. Keep the private key secret."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("nl.martijndwars.webpush.cli.Cli")
+    args("generate-key")
 }
