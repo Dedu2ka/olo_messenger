@@ -1,0 +1,70 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: messenger_postgres
+    environment:
+      POSTGRES_DB: messenger_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the environment or .env file}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d messenger_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: messenger_redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    container_name: messenger_backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/messenger_db
+      SPRING_JDBC_URL: jdbc:postgresql://postgres:5432/messenger_db
+      SPRING_R2DBC_USERNAME: ${SPRING_R2DBC_USERNAME:-postgres}
+      SPRING_R2DBC_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the environment or .env file}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the environment or .env file}
+      MESSAGE_ENCRYPTION_KEY_BASE64: ${MESSAGE_ENCRYPTION_KEY_BASE64:?Set MESSAGE_ENCRYPTION_KEY_BASE64 in the environment or .env file}
+      FCM_SERVICE_ACCOUNT_PATH: /run/secrets/firebase/service-account.json
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./firebase:/run/secrets/firebase:ro
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: messenger_caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:

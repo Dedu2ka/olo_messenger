@@ -1,0 +1,17 @@
+.idea/
+.vscode/
+*.iml
+.gradle/
+build/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+firebase/*
+!firebase/.gitkeep
+*.log
+.DS_Store
