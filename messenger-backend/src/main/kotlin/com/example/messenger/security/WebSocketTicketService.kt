@@ -22,7 +22,7 @@ class WebSocketTicketService(
     // не болкирует поток, выдает билет по id  и токену
     suspend fun create(userId: String, token: String): String {
         // проверяем что токен валиден и прнадлежит пользователю
-        require(jwtUtil.validateToken(token) && jwtUtil.getUserIdFromToken(token) == userId) {
+        require(jwtUtil.validateAccessToken(token) && jwtUtil.getUserIdFromToken(token) == userId) {
             "Access token does not match authenticated user"
         }
         // смотрим, что токен не отозван
@@ -48,7 +48,7 @@ class WebSocketTicketService(
         val (userId, token) = identity.split('|', limit = 2).takeIf { it.size == 2 }
             ?: return null
         // проверяем живой ли токен
-        if (!jwtUtil.validateToken(token) || jwtUtil.getUserIdFromToken(token) != userId) return null
+        if (!jwtUtil.validateAccessToken(token) || jwtUtil.getUserIdFromToken(token) != userId) return null
         // и не отозван ли
         if (tokenBlacklistService.isBlacklisted(token).awaitSingle()) return null
         return WebSocketIdentity(userId, token)
@@ -56,7 +56,7 @@ class WebSocketTicketService(
 
     // проверям может ли соединение еще работать
     suspend fun isUsable(identity: WebSocketIdentity): Boolean =
-        jwtUtil.validateToken(identity.token) &&
+        jwtUtil.validateAccessToken(identity.token) &&
             jwtUtil.getUserIdFromToken(identity.token) == identity.userId &&
             !tokenBlacklistService.isBlacklisted(identity.token).awaitSingle()
 

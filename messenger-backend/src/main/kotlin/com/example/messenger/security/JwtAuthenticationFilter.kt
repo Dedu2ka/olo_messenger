@@ -38,7 +38,7 @@ class JwtAuthenticationFilter(
             // отреаем бир и остается сам токен
             val token = authHeader.substring(7)
             // чекаем, что токен валиден
-            if (jwtUtil.validateToken(token)) {
+            if (jwtUtil.validateAccessToken(token)) {
                 // проверяем не отозван ли токен
                 return tokenBlacklistService.isBlacklisted(token)
                     .flatMap { isBlacklisted ->

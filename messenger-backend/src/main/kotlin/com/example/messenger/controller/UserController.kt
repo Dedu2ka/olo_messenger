@@ -89,9 +89,10 @@ class UserController(
     suspend fun searchUsers(
         @RequestParam query: String,
         @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "20") size: Int
+        @RequestParam(defaultValue = "20") size: Int,
+        @AuthenticationPrincipal principalId: String
     ): List<UserDto> {
-        val normalizedQuery = query.trim()
+        val normalizedQuery = query.trim().lowercase().replace('ё', 'е')
         if (normalizedQuery.length > 100 || page < 0 || size !in 1..50) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid search parameters")
         }
@@ -100,7 +101,13 @@ class UserController(
         if (offset > Int.MAX_VALUE) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Page is too large")
         }
-        val users = userRepository.searchByUsernameOrDisplayName(normalizedQuery, size, offset.toInt()).toList()
+        val excludeUserId = AuthenticatedUser.requireId(principalId)
+        val users = userRepository.searchByUsernameOrDisplayName(
+            normalizedQuery,
+            excludeUserId,
+            size,
+            offset.toInt()
+        ).toList()
 
         return users.map { it.toDto() }
     }

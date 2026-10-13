@@ -9,7 +9,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.server.SecurityWebFilterChain
 import org.springframework.web.cors.CorsConfiguration
-import org.springframework.web.cors.reactive.CorsWebFilter
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource
 
 // аннотация обозначяющая что методы этого класса надо выполнить при старте
@@ -33,9 +32,10 @@ class SecurityConfig(
         return BCryptPasswordEncoder()
     }
 
-    // Бин проверяющий при входе на сервер
+    // Источник CORS-конфигурации подключается непосредственно к Spring Security,
+    // чтобы preflight OPTIONS обрабатывался до проверки JWT.
     @Bean
-    fun corsFilter(): CorsWebFilter {
+    fun corsConfigurationSource(): UrlBasedCorsConfigurationSource {
         // список правил
         val config = CorsConfiguration().apply {
             // Указываем, что разрешенные сайты, это те которые указаны в списке настроек
@@ -50,8 +50,7 @@ class SecurityConfig(
         val source = UrlBasedCorsConfigurationSource()
         // "/**" значит «любой адрес»
         source.registerCorsConfiguration("/**", config)
-        // ответчик который будет возвращать разрешено браузеру или нет
-        return CorsWebFilter(source)
+        return source
     }
 
     // бин описывающий какие url разрешены и как
@@ -61,6 +60,7 @@ class SecurityConfig(
         return http
             // csfr защита нужна для куки, у нас нету
             .csrf { it.disable() }
+            .cors { cors -> cors.configurationSource(corsConfigurationSource()) }
             // описываем правила для доступа к url
             .authorizeExchange { exchanges ->
                 exchanges

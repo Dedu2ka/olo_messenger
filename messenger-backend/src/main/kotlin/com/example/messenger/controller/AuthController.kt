@@ -25,13 +25,14 @@ import org.springframework.web.bind.support.WebExchangeBindException
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.reactor.awaitSingleOrNull
 
-data class AuthRequest(
+class AuthRequest {
     @field:NotBlank(message = "Укажите логин")
     @field:Pattern(
         regexp = "^[A-Za-z0-9]+$",
         message = "Имя пользователя может содержать только латинские буквы и цифры"
     )
-    val username: String,
+    var username: String = ""
+        set(value) { field = value.trim() }
 
     @field:NotBlank(message = "Укажите пароль")
     @field:Size(min = 8, message = "Пароль должен содержать минимум 8 символов")
@@ -40,11 +41,17 @@ data class AuthRequest(
         message = "Пароль может содержать только латинские буквы, цифры и спец символы"
     )
     @field:JsonAlias("passwordHash")
-    val password: String
-)
+    var password: String = ""
+        set(value) { field = value.trim() }
+}
+
+data class RefreshRequest(val refreshToken: String)
+data class LogoutRequest(val refreshToken: String? = null)
 
 data class AuthResponse(
     val token: String,
+    val refreshToken: String,
+    val expiresInSeconds: Long,
     val userId: String,
     val username: String
 )
@@ -88,6 +95,8 @@ class AuthController(
         return ResponseEntity.ok(
             AuthResponse(
                 token = jwtUtil.generateToken(userId, savedUser.username),
+                refreshToken = jwtUtil.generateRefreshToken(userId, savedUser.username),
+                expiresInSeconds = jwtUtil.accessTokenLifetimeSeconds,
                 userId = userId,
                 username = savedUser.username
             )
@@ -111,6 +120,33 @@ class AuthController(
         return ResponseEntity.ok(
             AuthResponse(
                 token = jwtUtil.generateToken(userId, user.username),
+                refreshToken = jwtUtil.generateRefreshToken(userId, user.username),
+                expiresInSeconds = jwtUtil.accessTokenLifetimeSeconds,
+                userId = userId,
+                username = user.username
+            )
+        )
+    }
+
+    @PostMapping("/refresh")
+    suspend fun refresh(@RequestBody request: RefreshRequest): ResponseEntity<AuthResponse> {
+        val oldRefreshToken = request.refreshToken
+        if (!jwtUtil.validateRefreshToken(oldRefreshToken)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+        val ttlMillis = jwtUtil.getRemainingExpirationMillis(oldRefreshToken)
+        if (tokenBlacklistService.blacklistIfAbsent(oldRefreshToken, ttlMillis).awaitSingleOrNull() != true) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        val userId = jwtUtil.getUserIdFromToken(oldRefreshToken)
+        val user = userRepository.findById(java.util.UUID.fromString(userId))
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        return ResponseEntity.ok(
+            AuthResponse(
+                token = jwtUtil.generateToken(userId, user.username),
+                refreshToken = jwtUtil.generateRefreshToken(userId, user.username),
+                expiresInSeconds = jwtUtil.accessTokenLifetimeSeconds,
                 userId = userId,
                 username = user.username
             )
@@ -120,25 +156,17 @@ class AuthController(
     // Новое: logout — кладёт токен в чёрный список Redis до конца его естественного срока жизни
     @PostMapping("/logout")
     suspend fun logout(
-        @RequestHeader(value = "Authorization", required = false) authHeader: String?
+        @RequestHeader(value = "Authorization", required = false) authHeader: String?,
+        @RequestBody(required = false) request: LogoutRequest?
     ): ResponseEntity<Void> {
-
-        if (authHeader.isNullOrBlank() || !authHeader.startsWith("Bearer ")) {
-            return ResponseEntity.badRequest().build()
+        val accessToken = authHeader?.takeIf { it.startsWith("Bearer ") }?.substring(7)
+        if (accessToken != null && jwtUtil.validateAccessToken(accessToken)) {
+            tokenBlacklistService.blacklist(accessToken, jwtUtil.getRemainingExpirationMillis(accessToken)).awaitSingle()
+            webSocketSessionManager.closeSessions(jwtUtil.getUserIdFromToken(accessToken)).awaitSingleOrNull()
         }
-
-        val token = authHeader.substring(7)
-
-        if (!jwtUtil.validateToken(token)) {
-            // Токен и так уже невалиден/истёк — отзывать нечего, но это не ошибка клиента
-            return ResponseEntity.noContent().build()
+        request?.refreshToken?.takeIf(jwtUtil::validateRefreshToken)?.let { refreshToken ->
+            tokenBlacklistService.blacklist(refreshToken, jwtUtil.getRemainingExpirationMillis(refreshToken)).awaitSingle()
         }
-
-        val ttlMillis = jwtUtil.getRemainingExpirationMillis(token)
-
-        tokenBlacklistService.blacklist(token, ttlMillis).awaitSingle()
-        val userId = jwtUtil.getUserIdFromToken(token)
-        webSocketSessionManager.closeSessions(userId).awaitSingleOrNull()
         return ResponseEntity.noContent().build()
     }
 

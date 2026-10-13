@@ -23,8 +23,11 @@ data class ChatDto(
     val id: String,
     val type: String,
     val partnerName: String?,
+    val partnerDisplayName: String? = null,
+    val partnerUsername: String? = null,
     val partnerAvatarUrl: String? = null,
     val lastMessage: String? = null,
     val lastMessageAt: String? = null,
+    val lastMessageSenderId: String? = null,
     val unreadCount: Long = 0
 )

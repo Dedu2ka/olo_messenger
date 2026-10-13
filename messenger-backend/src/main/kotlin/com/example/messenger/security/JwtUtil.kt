@@ -6,6 +6,7 @@ import io.jsonwebtoken.security.Keys
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.util.Date
+import java.util.UUID
 
 @Component
 class JwtUtil(
@@ -14,8 +15,11 @@ class JwtUtil(
     private val secret: String,
 
     // время жизни токена в милисекндах
-    @Value("\${jwt.expiration-ms:86400000}")
-    private val expirationMs: Long
+    @Value("\${jwt.expiration-ms:900000}")
+    private val expirationMs: Long,
+
+    @Value("\${jwt.refresh-expiration-ms:2592000000}")
+    private val refreshExpirationMs: Long
 ) {
 
     // делаем ключ преобразуя сроку в байты
@@ -24,15 +28,23 @@ class JwtUtil(
     )
 
     // создаем токен
+    val accessTokenLifetimeSeconds: Long
+        get() = expirationMs / 1000
+
     fun generateToken(
         userId: String,
         username: String
-    ): String {
+    ): String = generateToken(userId, username, ACCESS_TYPE, expirationMs)
+
+    fun generateRefreshToken(userId: String, username: String): String =
+        generateToken(userId, username, REFRESH_TYPE, refreshExpirationMs)
+
+    private fun generateToken(userId: String, username: String, type: String, lifetimeMs: Long): String {
 
         val now = Date()
         // ммоент когда токен перестанет действовать
         val expiryDate = Date(
-            now.time + expirationMs
+            now.time + lifetimeMs
         )
 
         return Jwts.builder()
@@ -40,6 +52,8 @@ class JwtUtil(
             .setSubject(userId)
             // доп поле имени
             .claim("username", username)
+            .claim("token_type", type)
+            .setId(UUID.randomUUID().toString())
             // момент выдачи
             .setIssuedAt(now)
             // момент когда токен умрет
@@ -70,6 +84,16 @@ class JwtUtil(
         }
     }
 
+    fun validateAccessToken(token: String): Boolean =
+        validateToken(token) && runCatching {
+            getClaims(token).get("token_type", String::class.java).let { it == null || it == ACCESS_TYPE }
+        }.getOrDefault(false)
+
+    fun validateRefreshToken(token: String): Boolean =
+        validateToken(token) && runCatching {
+            getClaims(token).get("token_type", String::class.java) == REFRESH_TYPE
+        }.getOrDefault(false)
+
     // проверка сколько токену осталось жить
     fun getRemainingExpirationMillis(token: String): Long {
         return try {
@@ -93,5 +117,10 @@ class JwtUtil(
             .parseClaimsJws(token)
             // содержимое токена
             .body
+    }
+
+    private companion object {
+        const val ACCESS_TYPE = "access"
+        const val REFRESH_TYPE = "refresh"
     }
 }

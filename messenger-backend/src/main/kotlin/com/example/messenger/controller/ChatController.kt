@@ -10,7 +10,6 @@ import com.example.messenger.service.ChatQueryService
 import com.example.messenger.service.ChatReadService
 import com.example.messenger.service.ChatService
 import com.example.messenger.service.MessageDeliveryService
-import kotlinx.coroutines.flow.Flow
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -91,10 +90,14 @@ class ChatController(
     @GetMapping("/{chatId}/messages")
     suspend fun getMessages(
         @PathVariable chatId: String,
-        @AuthenticationPrincipal principalId: String
-    ): Flow<MessageDto> = chatQueryService.getMessages(
+        @AuthenticationPrincipal principalId: String,
+        @RequestParam(required = false) beforeMessageId: String?,
+        @RequestParam(defaultValue = "50") limit: Int
+    ): List<MessageDto> = chatQueryService.getMessages(
         AuthenticatedUser.parseUuid(chatId),
-        AuthenticatedUser.requireId(principalId)
+        AuthenticatedUser.requireId(principalId),
+        beforeMessageId?.let(AuthenticatedUser::parseUuid),
+        limit
     )
 
     @PostMapping("/{chatId}/messages")

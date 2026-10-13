@@ -12,10 +12,13 @@ interface UserRepository : CoroutineCrudRepository<User, UUID> {
 
     @Query("""
         SELECT * FROM users
-        WHERE POSITION(LOWER(:query) IN LOWER(username)) > 0
-           OR POSITION(LOWER(:query) IN LOWER(display_name)) > 0
+        WHERE id <> :excludeUserId::uuid
+          AND (
+              POSITION(:query IN REPLACE(LOWER(username), 'ё', 'е')) > 0
+              OR POSITION(:query IN REPLACE(LOWER(display_name), 'ё', 'е')) > 0
+          )
         ORDER BY username
         LIMIT :limit OFFSET :offset
     """)
-    fun searchByUsernameOrDisplayName(query: String, limit: Int, offset: Int): Flow<User>
+    fun searchByUsernameOrDisplayName(query: String, excludeUserId: UUID, limit: Int, offset: Int): Flow<User>
 }

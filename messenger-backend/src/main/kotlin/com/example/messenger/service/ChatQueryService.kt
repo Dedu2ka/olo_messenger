@@ -6,10 +6,10 @@ import com.example.messenger.domain.MessageRepository
 import com.example.messenger.domain.UserRepository
 import com.example.messenger.dto.ChatDto
 import com.example.messenger.dto.MessageDto
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import org.springframework.stereotype.Service
+import org.springframework.http.HttpStatus
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @Service
@@ -36,16 +36,29 @@ class ChatQueryService(
                 id = chat.id.toString(),
                 type = chat.type,
                 partnerName = chat.partnerName ?: "Чат",
+                partnerDisplayName = chat.partnerDisplayName?.trim()?.takeIf(String::isNotBlank),
+                partnerUsername = chat.partnerUsername,
                 partnerAvatarUrl = chat.partnerAvatarUrl,
                 lastMessage = chat.lastMessage?.let(messageEncryptionService::decrypt),
                 lastMessageAt = chat.lastMessageAt?.toString(),
+                lastMessageSenderId = chat.lastMessageSenderId?.toString(),
                 unreadCount = chat.unreadCount
             )
         }
 
-    suspend fun getMessages(chatId: UUID, userId: UUID): Flow<MessageDto> {
+    suspend fun getMessages(chatId: UUID, userId: UUID, beforeMessageId: UUID?, limit: Int): List<MessageDto> {
         chatService.ensureChatMember(chatId, userId)
-        return messageRepository.findAllByChatIdOrderBySentAtAsc(chatId).map { it.toDecryptedDto() }
+        if (limit !in 1..100) throw ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 100")
+        if (beforeMessageId != null) {
+            val cursor = messageRepository.findById(beforeMessageId)
+            if (cursor?.chatId != chatId) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "beforeMessageId must belong to this chat")
+            }
+        }
+        return messageRepository.findMessagePage(chatId, beforeMessageId, limit)
+            .toList()
+            .asReversed()
+            .map { it.toDecryptedDto() }
     }
 
     private fun Message.toDecryptedDto(): MessageDto =

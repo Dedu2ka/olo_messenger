@@ -13,12 +13,18 @@ data class ChatSummary(
     val type: String,
     @Column("partner_name")
     val partnerName: String?,
+    @Column("partner_display_name")
+    val partnerDisplayName: String?,
+    @Column("partner_username")
+    val partnerUsername: String?,
     @Column("partner_avatar_url")
     val partnerAvatarUrl: String?,
     @Column("last_message")
     val lastMessage: String?,
     @Column("last_message_at")
     val lastMessageAt: OffsetDateTime?,
+    @Column("last_message_sender_id")
+    val lastMessageSenderId: UUID?,
     @Column("unread_count")
     val unreadCount: Long
 )
@@ -40,9 +46,12 @@ interface ChatRepository : CoroutineCrudRepository<Chat, UUID> {
         SELECT c.id AS id,
                c.type AS type,
                COALESCE(NULLIF(BTRIM(p.display_name), ''), p.username, 'Чат') AS partner_name,
+               p.display_name AS partner_display_name,
+               p.username AS partner_username,
                p.avatar_url AS partner_avatar_url,
                latest.content AS last_message,
                latest.created_at AS last_message_at,
+               latest.sender_id AS last_message_sender_id,
                COALESCE((
                    SELECT COUNT(*)
                    FROM messages unread
@@ -62,7 +71,7 @@ interface ChatRepository : CoroutineCrudRepository<Chat, UUID> {
             LIMIT 1
         ) p ON TRUE
         LEFT JOIN LATERAL (
-            SELECT m.content, m.sent_at AS created_at
+            SELECT m.content, m.sent_at AS created_at, m.sender_id
             FROM messages m
             WHERE m.chat_id = c.id
             ORDER BY m.sent_at DESC, m.id DESC

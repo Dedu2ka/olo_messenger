@@ -26,6 +26,14 @@ class TokenBlacklistService(
             .set(key(token), "revoked", Duration.ofMillis(ttlMillis))
     }
 
+    /** Atomically claims a token for one-time refresh rotation. */
+    fun blacklistIfAbsent(token: String, ttlMillis: Long): Mono<Boolean> {
+        if (ttlMillis <= 0) return Mono.just(false)
+        return redisTemplate.opsForValue()
+            .setIfAbsent(key(token), "revoked", Duration.ofMillis(ttlMillis))
+            .defaultIfEmpty(false)
+    }
+
     // чекаеме сть ли ключ в черном списке, если есть вернем тру
     fun isBlacklisted(token: String): Mono<Boolean> {
         return redisTemplate.hasKey(key(token))

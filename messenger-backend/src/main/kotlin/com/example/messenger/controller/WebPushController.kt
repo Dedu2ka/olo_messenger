@@ -36,22 +36,24 @@ class WebPushController(
         @AuthenticationPrincipal principalId: String
     ) {
         val endpoint = request.endpoint.trim()
-        if (endpoint.isBlank() || endpoint.length > MAX_ENDPOINT_LENGTH ||
-            request.keys.p256dh.length !in 80..100 || request.keys.auth.length !in 16..64
-        ) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid web push subscription")
+        if (endpoint.isBlank() || endpoint.length > MAX_ENDPOINT_LENGTH) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid web push endpoint")
         }
         val uri = runCatching { URI(endpoint) }.getOrNull()
         val host = uri?.host?.lowercase().orEmpty()
         val trustedPushHost = host == "web.push.apple.com" || host.endsWith(".push.apple.com") ||
             host == "fcm.googleapis.com" || host.endsWith(".push.services.mozilla.com") ||
             host.endsWith(".notify.windows.com")
+        if (uri?.scheme != "https" || uri.userInfo != null || !trustedPushHost) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported web push endpoint host")
+        }
         val validKeys = runCatching {
+            if (request.keys.p256dh.length !in 80..100 || request.keys.auth.length !in 16..64) return@runCatching false
             val decoder = java.util.Base64.getUrlDecoder()
             decoder.decode(request.keys.p256dh).size == 65 && decoder.decode(request.keys.auth).size == 16
         }.getOrDefault(false)
-        if (uri?.scheme != "https" || uri.userInfo != null || !trustedPushHost || !validKeys) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid web push subscription")
+        if (!validKeys) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid web push encryption keys")
         }
         repository.saveSubscription(
             endpoint,

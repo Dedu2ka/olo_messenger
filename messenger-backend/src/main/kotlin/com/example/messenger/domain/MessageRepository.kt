@@ -7,8 +7,23 @@ import org.springframework.data.r2dbc.repository.Modifying
 import java.util.UUID
 
 interface MessageRepository : CoroutineCrudRepository<Message, UUID> {
-    @Query("SELECT * FROM messages WHERE chat_id = :chatId ORDER BY sent_at ASC, id ASC")
-    fun findAllByChatIdOrderBySentAtAsc(chatId: UUID): Flow<Message>
+    @Query("""
+        SELECT m.*
+        FROM messages m
+        WHERE m.chat_id = :chatId::uuid
+          AND (
+              :beforeMessageId IS NULL
+              OR (m.sent_at, m.id) < (
+                  SELECT cursor.sent_at, cursor.id
+                  FROM messages cursor
+                  WHERE cursor.id = CAST(:beforeMessageId AS UUID)
+                    AND cursor.chat_id = :chatId::uuid
+              )
+          )
+        ORDER BY m.sent_at DESC, m.id DESC
+        LIMIT :limit
+    """)
+    fun findMessagePage(chatId: UUID, beforeMessageId: UUID?, limit: Int): Flow<Message>
 
     @Query("SELECT * FROM messages WHERE client_message_id = :clientMessageId")
     suspend fun findByClientMessageId(clientMessageId: UUID): Message?
